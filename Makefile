@@ -24,11 +24,11 @@ ESPBAUD		?= 460800
 # BOOT = none
 # BOOT = old - boot_v1.1
 # BOOT = new - boot_v1.3+
-BOOT?=none
+BOOT?=new
 # APP = 0 - eagle.flash.bin + eagle.irom0text.bin
 # APP = 1 - user1.bin
 # APP = 2 - user2.bin
-APP?=0
+APP?=1
 # SPI_SPEED = 20MHz, 26.7MHz, 40MHz, 80MHz
 SPI_SPEED?=40
 # SPI_MODE: QIO, QOUT, DIO, DOUT
@@ -149,7 +149,7 @@ MODULES		= driver user
 EXTRA_INCDIR    = include $(SDK_BASE)/../include
 
 # libraries used in this project, mainly provided by the SDK
-LIBS		= c gcc hal phy pp net80211 lwip wpa main
+LIBS		= c gcc hal phy pp net80211 lwip wpa main upgrade
 
 # compiler flags using during compilation of source files
 CFLAGS		= -Os -g -O2 -Wpointer-arith -Wundef -Werror -Wl,-EL -fno-inline-functions -nostdlib -mlongcalls -mtext-section-literals  -D__ets__ -DICACHE_FLASH
@@ -199,8 +199,6 @@ LD_SCRIPT	:= $(addprefix -T$(SDK_BASE)/$(SDK_LDDIR)/,$(LD_SCRIPT))
 INCDIR	:= $(addprefix -I,$(SRC_DIR))
 EXTRA_INCDIR	:= $(addprefix -I,$(EXTRA_INCDIR))
 MODULE_INCDIR	:= $(addsuffix /include,$(INCDIR))
-
-#VERBOSE = 1
 
 V ?= $(VERBOSE)
 ifeq ("$(V)","1")
@@ -312,8 +310,7 @@ endif
 
 flash: all
 ifeq ($(app), 0) 
-	$(ESPTOOL) -p $(ESPPORT) --baud $(ESPBAUD) write_flash 0x00000 $(FW_BASE)/eagle.flash.bin 0x40000 $(FW_BASE)/eagle.irom0text.bin
-    #$(ESPTOOL) --port $(ESPPORT) write_flash 0x00000 $(TARGET_OUT)-0x00000.bin 0x40000 $(TARGET_OUT)-0x40000.bin
+	$(ESPTOOL) -p $(ESPPORT) -b $(ESPBAUD) write_flash $(flashimageoptions) 0x00000 $(FW_BASE)/eagle.flash.bin 0x40000 $(FW_BASE)/eagle.irom0text.bin
 else
 ifeq ($(boot), none)
 	$(ESPTOOL) -p $(ESPPORT) -b $(ESPBAUD) write_flash $(flashimageoptions) 0x00000 $(FW_BASE)/eagle.flash.bin 0x40000 $(FW_BASE)/eagle.irom0text.bin
@@ -324,12 +321,17 @@ endif
 
 flashinit:
 	$(vecho) "Flash init data:"
-	$(vecho) "Clear old settings (EEP area):"
-	$(vecho) "clear_eep.bin-------->0x79000"
 	$(vecho) "Default config (Clear SDK settings):"
 	$(vecho) "blank.bin-------->0x7E000"
+	$(ESPTOOL) -p $(ESPPORT) -b $(ESPBAUD) write_flash $(flashimageoptions) 0x7e000 $(SDK_BASE)/bin/blank.bin
+
+flashclean:
+	$(vecho) "Flash Clean:"
+	$(vecho) "blank512.bin-------->0x00000"
 	$(vecho) "esp_init_data_default.bin-------->0x7C000"
-	$(ESPTOOL) -p $(ESPPORT) -b $(ESPBAUD) write_flash $(flashimageoptions) 0x79000 $(SDK_BASE)/bin/clear_eep.bin 0x7c000 $(SDK_BASE)/bin/esp_init_data_default.bin 0x7e000 $(SDK_BASE)/bin/blank.bin
+	$(ESPTOOL) -p $(ESPPORT) -b $(ESPBAUD) write_flash $(flashimageoptions) 0x00000 $(SDK_BASE)/bin/blank512k.bin
+
+
 
 rebuild: clean all
 
