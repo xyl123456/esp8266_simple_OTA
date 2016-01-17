@@ -28,13 +28,13 @@ BOOT?=new
 # APP = 0 - eagle.flash.bin + eagle.irom0text.bin
 # APP = 1 - user1.bin
 # APP = 2 - user2.bin
-APP?=1
+APP?=0
 # SPI_SPEED = 20MHz, 26.7MHz, 40MHz, 80MHz
 SPI_SPEED?=40
 # SPI_MODE: QIO, QOUT, DIO, DOUT
 SPI_MODE?=QIO
 # SPI_SIZE: 256KB, 512KB, 1024KB, 2048KB, 4096KB
-SPI_SIZE?=512
+SPI_SIZE?=4096
 
 ifeq ($(BOOT), new)
     boot = new
@@ -321,16 +321,27 @@ endif
 
 flashinit:
 	$(vecho) "Flash init data:"
+	$(vecho) "Clear old settings (EEP area):"
+	$(vecho) "clear_eep.bin-------->0x79000"
 	$(vecho) "Default config (Clear SDK settings):"
 	$(vecho) "blank.bin-------->0x7E000"
-	$(ESPTOOL) -p $(ESPPORT) -b $(ESPBAUD) write_flash $(flashimageoptions) 0x7e000 $(SDK_BASE)/bin/blank.bin
+	$(vecho) "esp_init_data_default.bin-------->0x7C000"
+	$(ESPTOOL) -p $(ESPPORT) -b $(ESPBAUD) write_flash $(flashimageoptions) 0x79000 $(SDK_BASE)/bin/clear_eep.bin 0x7c000 $(SDK_BASE)/bin/esp_init_data_default.bin 0x7e000 $(SDK_BASE)/bin/blank.bin
+	#$(ESPTOOL) -p $(ESPPORT) -b $(ESPBAUD) write_flash $(flashimageoptions) 0x7e000 $(SDK_BASE)/bin/blank.bin
+clear_eep.bin:
+	$(vecho) "clear_eep.bin-------->0x79000"
+	$(ESPTOOL) -p $(ESPPORT) -b $(ESPBAUD) write_flash $(flashimageoptions) 0x79000 $(SDK_BASE)/bin/clear_eep.bin 
 
+esp_init_data_default:	
+	$(vecho) "esp_init_data_default.bin-------->0x7C000"
+	$(ESPTOOL) -p $(ESPPORT) -b $(ESPBAUD) write_flash $(flashimageoptions)  0x3fc000 $(SDK_BASE)/bin/esp_init_data_default.bin 
+	
 flashclean:
 	$(vecho) "Flash Clean:"
 	$(vecho) "blank512.bin-------->0x00000"
-	$(vecho) "esp_init_data_default.bin-------->0x7C000"
-	$(ESPTOOL) -p $(ESPPORT) -b $(ESPBAUD) write_flash $(flashimageoptions) 0x00000 $(SDK_BASE)/bin/blank512k.bin
 
+	$(ESPTOOL) -p $(ESPPORT) -b $(ESPBAUD) write_flash $(flashimageoptions) 0x00000 $(SDK_BASE)/bin/blank512k.bin
+	$(ESPTOOL) -p $(ESPPORT) -b $(ESPBAUD) write_flash $(flashimageoptions) 0x80000 $(SDK_BASE)/bin/blank512k.bin
 
 
 rebuild: clean all

@@ -20,6 +20,7 @@
 extern UartDevice UartDev;
 
 LOCAL void uart0_rx_intr_handler(void *para);
+#define user_procTaskPrio        0
 
 /******************************************************************************
  * FunctionName : uart_config
@@ -144,6 +145,7 @@ uart0_rx_intr_handler(void *para)
             pRxBuff->pWritePos = pRxBuff->pRcvMsgBuff ;
         }
     }
+    system_os_post(user_procTaskPrio, 0, 0 );
 }
 
 
@@ -185,3 +187,19 @@ uart_init(UartBautRate uart0_br, UartBautRate uart1_br)
     os_install_putc1((void *)uart1_write_char);
 }
 
+/******************************************************************************
+ * FunctionName : uart0_rx_one_char
+ * Description  : user interface to read data
+ * Parameters   : NONE
+ * Returns      : RX char
+*******************************************************************************/
+ICACHE_FLASH_ATTR int uart0_rx_one_char() {
+  if(UartDev.rcv_buff.pReadPos == UartDev.rcv_buff.pWritePos) return -1;
+  int ret = *UartDev.rcv_buff.pReadPos;
+  UartDev.rcv_buff.pReadPos++;
+  if(UartDev.rcv_buff.pReadPos == (UartDev.rcv_buff.pRcvMsgBuff + RX_BUFF_SIZE)) {
+    UartDev.rcv_buff.pReadPos = UartDev.rcv_buff.pRcvMsgBuff;
+  }
+
+  return ret;
+}
