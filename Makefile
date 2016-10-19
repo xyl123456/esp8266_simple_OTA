@@ -13,28 +13,29 @@ FW_BASE		= firmware
 XTENSA_TOOLS_ROOT ?= c:/Espressif/xtensa-lx106-elf/bin
 
 # base directory of the ESP8266 SDK package, absolute
-SDK_BASE	?= c:/Espressif/ESP8266_SDK
+SDK_BASE	?= C:\Espressif\ESP8266_RTOS_SDK
 
 # esptool path and port
 SDK_TOOLS	?= c:/Espressif/utils
-ESPTOOL		?= c:\Python27\python  $(SDK_TOOLS)/esptool.py
-ESPPORT		?= COM19
-ESPBAUD		?= 460800
+ESPTOOL		?= $(SDK_TOOLS)/esptool.exe
+ESPPORT		?= COM5
+ESPBAUD		?= 500000
 
 # BOOT = none
 # BOOT = old - boot_v1.1
 # BOOT = new - boot_v1.3+
-BOOT?=new
+BOOT?= new
 # APP = 0 - eagle.flash.bin + eagle.irom0text.bin
 # APP = 1 - user1.bin
 # APP = 2 - user2.bin
-APP?=0
+APP?= 2
 # SPI_SPEED = 20MHz, 26.7MHz, 40MHz, 80MHz
 SPI_SPEED?=40
 # SPI_MODE: QIO, QOUT, DIO, DOUT
 SPI_MODE?=QIO
 # SPI_SIZE: 256KB, 512KB, 1024KB, 2048KB, 4096KB
 SPI_SIZE?=4096
+
 
 ifeq ($(BOOT), new)
     boot = new
@@ -105,13 +106,13 @@ else
     else
         ifeq ($(SPI_SIZE), 2048)
             size = 3
-            flash = 1024
+            flash = 2048
             flashimageoptions += -fs 16m
         else
             ifeq ($(SPI_SIZE), 4096)
-                size = 4
-                flash = 1024
-                flashimageoptions += -fs 32m
+                size = 5
+                flash = 2048
+                flashimageoptions += -fs 32m-c1
             else
                 size = 0
                 flash = 512
@@ -130,12 +131,12 @@ ifeq ($(flash), 512)
     endif
   endif
 else
-  ifeq ($(flash), 1024)
+  ifeq ($(flash), 2048)
     ifeq ($(app), 1)
       addr = 0x01000
     else
       ifeq ($(app), 2)
-        addr = 0x81000
+        addr = 0x101000
       endif
     endif
   endif
@@ -145,17 +146,18 @@ endif
 TARGET		= app
 
 # which modules (subdirectories) of the project to include in compiling
-MODULES		= driver user
-EXTRA_INCDIR    = include $(SDK_BASE)/../include
+MODULES		= driver user utils memory paho
+EXTRA_INCDIR    = include $(SDK_BASE)/../include 
 
 # libraries used in this project, mainly provided by the SDK
-LIBS		= c gcc hal phy pp net80211 lwip wpa main upgrade
+		       
+LIBS = cirom main gcc hal phy pp net80211 lwip wpa crypto freertos  spiffs espconn
 
 # compiler flags using during compilation of source files
-CFLAGS		= -Os -g -O2 -Wpointer-arith -Wundef -Werror -Wl,-EL -fno-inline-functions -nostdlib -mlongcalls -mtext-section-literals  -D__ets__ -DICACHE_FLASH
+CFLAGS		= -Os -g -O2 -std=gnu90 -Wpointer-arith -Wundef -Werror -Wl,-EL -fno-inline-functions -nostdlib -mlongcalls -mtext-section-literals -ffunction-sections -fdata-sections
 
 # linker flags used to generate the main object file
-LDFLAGS		= -nostdlib -Wl,--no-check-sections -u call_user_start -Wl,-static
+LDFLAGS		= -nostdlib -Wl,--no-check-sections -u call_user_start -Wl,-static 
 
 # linker script used for the above linkier step
 LD_SCRIPT	= eagle.app.v6.ld
@@ -172,7 +174,7 @@ endif
 # various paths from the SDK used in this project
 SDK_LIBDIR	= lib
 SDK_LDDIR	= ld
-SDK_INCDIR	= include include/json
+SDK_INCDIR	= include include/json include/lwip include/espressif include/lwip/ipv4 include/lwip/ipv6 include/nopoll include/spiffs include/ssl include/json
 
 # select which tools to use as compiler, librarian and linker
 CC		:= $(XTENSA_TOOLS_ROOT)/xtensa-lx106-elf-gcc
@@ -217,19 +219,19 @@ $1/%.o: %.c
 	$(Q) $(CC) $(INCDIR) $(MODULE_INCDIR) $(EXTRA_INCDIR) $(SDK_INCDIR) $(CFLAGS)  -c $$< -o $$@
 endef
 
-.PHONY: all checkdirs clean flash flashinit flashonefile rebuild
+.PHONY: all checkdirs clean flash flashinit flashonefile rebuild flashclean
 
-all: checkdirs $(TARGET_OUT)
+all: checkdirs $(TARGET_OUT) 
+
 
 $(TARGET_OUT): $(APP_AR)
+
 	$(vecho) "LD $@"
+	
 	$(Q) $(LD) -L$(SDK_LIBDIR) $(LD_SCRIPT) $(LDFLAGS) -Wl,--start-group $(LIBS) $(APP_AR) -Wl,--end-group -o $@
 	$(vecho) "------------------------------------------------------------------------------"
 	$(vecho) "Section info:"
 	$(Q) $(OBJDUMP) -h -j .data -j .rodata -j .bss -j .text -j .irom0.text $@
-	$(vecho) "------------------------------------------------------------------------------"
-	$(vecho) "Section info:"
-	$(Q) $(SDK_TOOLS)/memanalyzer.exe $(OBJDUMP).exe $@
 	$(vecho) "------------------------------------------------------------------------------"
 	$(vecho) "Run objcopy, please wait..."
 	$(Q) $(OBJCOPY) --only-section .text -O binary $@ eagle.app.v6.text.bin
@@ -238,6 +240,7 @@ $(TARGET_OUT): $(APP_AR)
 	$(Q) $(OBJCOPY) --only-section .irom0.text -O binary $@ eagle.app.v6.irom0text.bin
 	$(vecho) "objcopy done"
 	$(vecho) "Run gen_appbin.exe"
+
 ifeq ($(app), 0)
 	$(Q) $(SDK_TOOLS)/gen_appbin.exe $@ 0 $(mode) $(freqdiv) $(size)
 	$(Q) mv eagle.app.flash.bin $(FW_BASE)/eagle.flash.bin
@@ -247,6 +250,7 @@ ifeq ($(app), 0)
 	$(vecho) "Generate eagle.flash.bin and eagle.irom0text.bin successully in folder $(FW_BASE)."
 	$(vecho) "eagle.flash.bin-------->0x00000"
 	$(vecho) "eagle.irom0text.bin---->0x40000"
+	
 else
     ifeq ($(boot), new)
 		$(Q) $(SDK_TOOLS)/gen_appbin.exe $@ 2 $(mode) $(freqdiv) $(size)
@@ -295,10 +299,10 @@ flashonefile: all
 	$(vecho) "eagle.app.flash.bin-------->0x00000"
 	$(ESPTOOL) -p $(ESPPORT) -b $(ESPBAUD) write_flash $(flashimageoptions) 0x00000 $(FW_BASE)/eagle.app.flash.bin
 
-flashboot: all flashinit
+flashboot: all 
 ifeq ($(boot), new)
 	$(vecho) "Flash boot_v1.3 and +"
-	$(ESPTOOL) -p $(ESPPORT) -b $(ESPBAUD) write_flash $(flashimageoptions) 0x00000 $(SDK_BASE)/bin/boot_v1.4\(b1\).bin
+	$(ESPTOOL) -p $(ESPPORT) -b $(ESPBAUD) write_flash $(flashimageoptions) 0x00000 $(SDK_BASE)/bin/boot_v1.5.bin
 endif
 ifeq ($(boot), old)
 	$(vecho) "Flash boot_v1.1 and +"
@@ -308,12 +312,26 @@ ifeq ($(boot), none)
 	$(vecho) "No boot needed."
 endif
 
+flashclean:
+	$(vecho) "Flash Clean:"
+	$(vecho) "blank512.bin-------->0x00000"
+
+#	$(ESPTOOL) -p $(ESPPORT) -b $(ESPBAUD) write_flash $(flashimageoptions) 0x00000 $(SDK_BASE)/bin/blank1024k.bin
+#	$(ESPTOOL) -p $(ESPPORT) -b $(ESPBAUD) write_flash $(flashimageoptions) 0x80000 $(SDK_BASE)/bin/blank512k.bin
+#	$(ESPTOOL) -p $(ESPPORT) -b $(ESPBAUD) write_flash $(flashimageoptions) 0x100000 $(SDK_BASE)/bin/blank1024k.bin
+#	$(ESPTOOL) -p $(ESPPORT) -b $(ESPBAUD) write_flash $(flashimageoptions) 0x180000 $(SDK_BASE)/bin/blank512k.bin
+#	$(ESPTOOL) -p $(ESPPORT) -b $(ESPBAUD) write_flash $(flashimageoptions) 0x200000 $(SDK_BASE)/bin/blank1024k.bin
+#	$(ESPTOOL) -p $(ESPPORT) -b $(ESPBAUD) write_flash $(flashimageoptions) 0x280000 $(SDK_BASE)/bin/blank512k.bin
+	$(ESPTOOL) -p $(ESPPORT) -b $(ESPBAUD) write_flash $(flashimageoptions) 0x300000 $(SDK_BASE)/bin/blank512k.bin			
+#	$(ESPTOOL) -p $(ESPPORT) -b $(ESPBAUD) write_flash $(flashimageoptions) 0x380000 $(SDK_BASE)/bin/blank512k.bin
+
+
 flash: all
 ifeq ($(app), 0) 
-	$(ESPTOOL) -p $(ESPPORT) -b $(ESPBAUD) write_flash $(flashimageoptions) 0x00000 $(FW_BASE)/eagle.flash.bin 0x40000 $(FW_BASE)/eagle.irom0text.bin
+	$(ESPTOOL) -p $(ESPPORT) -b $(ESPBAUD) write_flash $(flashimageoptions) 0x00000 $(FW_BASE)/eagle.flash.bin 0x20000 $(FW_BASE)/eagle.irom0text.bin
 else
 ifeq ($(boot), none)
-	$(ESPTOOL) -p $(ESPPORT) -b $(ESPBAUD) write_flash $(flashimageoptions) 0x00000 $(FW_BASE)/eagle.flash.bin 0x40000 $(FW_BASE)/eagle.irom0text.bin
+	$(ESPTOOL) -p $(ESPPORT) -b $(ESPBAUD) write_flash $(flashimageoptions) 0x00000 $(FW_BASE)/eagle.flash.bin 0x20000 $(FW_BASE)/eagle.irom0text.bin
 else
 	$(ESPTOOL) -p $(ESPPORT) -b $(ESPBAUD) write_flash $(flashimageoptions) $(addr) $(FW_BASE)/upgrade/$(BIN_NAME).bin
 endif
@@ -327,22 +345,6 @@ flashinit:
 	$(vecho) "blank.bin-------->0x7E000"
 	$(vecho) "esp_init_data_default.bin-------->0x7C000"
 	$(ESPTOOL) -p $(ESPPORT) -b $(ESPBAUD) write_flash $(flashimageoptions) 0x79000 $(SDK_BASE)/bin/clear_eep.bin 0x7c000 $(SDK_BASE)/bin/esp_init_data_default.bin 0x7e000 $(SDK_BASE)/bin/blank.bin
-	#$(ESPTOOL) -p $(ESPPORT) -b $(ESPBAUD) write_flash $(flashimageoptions) 0x7e000 $(SDK_BASE)/bin/blank.bin
-clear_eep.bin:
-	$(vecho) "clear_eep.bin-------->0x79000"
-	$(ESPTOOL) -p $(ESPPORT) -b $(ESPBAUD) write_flash $(flashimageoptions) 0x79000 $(SDK_BASE)/bin/clear_eep.bin 
-
-esp_init_data_default:	
-	$(vecho) "esp_init_data_default.bin-------->0x7C000"
-	$(ESPTOOL) -p $(ESPPORT) -b $(ESPBAUD) write_flash $(flashimageoptions)  0x3fc000 $(SDK_BASE)/bin/esp_init_data_default.bin 
-	
-flashclean:
-	$(vecho) "Flash Clean:"
-	$(vecho) "blank512.bin-------->0x00000"
-
-	$(ESPTOOL) -p $(ESPPORT) -b $(ESPBAUD) write_flash $(flashimageoptions) 0x00000 $(SDK_BASE)/bin/blank512k.bin
-	$(ESPTOOL) -p $(ESPPORT) -b $(ESPBAUD) write_flash $(flashimageoptions) 0x80000 $(SDK_BASE)/bin/blank512k.bin
-
 
 rebuild: clean all
 
@@ -354,3 +356,35 @@ clean:
 	$(Q) rm -rf $(FW_BASE)
 
 $(foreach bdir,$(BUILD_DIR),$(eval $(call compile-objects,$(bdir))))
+
+
+
+
+
+
+#OTA CONFIG
+ESP_IP ?= 192.168.0.214
+ESP_PORT ?= 24
+PYTHON_EXEC ?= C:/Python27/python.exe
+
+ifeq ($(FLASH_OTA), 1) 
+#DIRETIVES
+PYTHON_ESPOTA_FILE ?= espota.py
+THIS_FILE := $(lastword $(MAKEFILE_LIST))
+SOFTWARE_CURRENT_USERBIN = $(shell $(PYTHON_EXEC) $(PYTHON_ESPOTA_FILE) get_current_userbin $(ESP_IP) $(ESP_PORT))
+endif
+
+flash_ota:	
+	@$(MAKE) -f $(THIS_FILE) clean # Limpa tudo antes de iniciar	
+ifeq ($(SOFTWARE_CURRENT_USERBIN), 0) 
+	$(MAKE) -f $(THIS_FILE) all BOOT=new APP=2 # Se atualmente esta usando app1 deve compilar app2
+	$(PYTHON_EXEC) $(PYTHON_ESPOTA_FILE) send $(ESP_IP) $(ESP_PORT) $(FW_BASE)/upgrade/user2.2048.new.bin
+endif
+ifeq ($(SOFTWARE_CURRENT_USERBIN), 1)
+	$(MAKE) -f $(THIS_FILE) all BOOT=new APP=1 # Se atualmente esta usando app2 deve compilar app1
+	$(PYTHON_EXEC) $(PYTHON_ESPOTA_FILE) send $(ESP_IP) $(ESP_PORT) $(FW_BASE)/upgrade/user1.2048.new.bin
+endif
+ifeq ($(SOFTWARE_CURRENT_USERBIN), ERROR)
+	@echo N�o foi possivel se conectar com o ESP pelo ip $(ESP_IP) e porta $(ESP_PORT)
+endif
+		
